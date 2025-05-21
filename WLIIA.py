@@ -8,6 +8,7 @@ from scipy.signal import find_peaks
 from astropy.io import fits
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from scipy.signal import peak_widths
 
 class Spectrum:
     def __init__(self, data):
@@ -45,46 +46,90 @@ class Spectrum:
             if closest:
                 matched.append(closest)
         return matched
-
-    def plot_with_tellurics(self, matches=None, telluric=None, region=None):
-        wl = self.data['wavelength']
+    
+    def build_line_mask_FWHM(self, matches, buffer = 1.1):
+        wavelengths = self.data['wavelength']
         flux = self.data['flux']
+        mask = np.ones(len(wavelengths), dtype=bool)
+        exclude_regions = []
 
-        plt.figure(figsize=(12, 5))
-        plt.plot(wl, flux, label='Spectrum')
+        for match in matches:
+            idx = match['index']
+            # Estimate FWHM using the peak width in index space
+            region_flux = 1 - flux
+            results_half = peak_widths(region_flux, [idx], rel_height=0.5)
+            fwhm_pixels = results_half[0][0]
 
-        if telluric:
-            tell_wl = telluric['wavelength']
-            trans = telluric['transmission']
-            plt.plot(tell_wl, trans, 'k--', label='Telluric Model')
+            dlambda = np.gradient(wavelengths)
+            fwhm_lambda = fwhm_pixels * dlambda[idx]
+            width = buffer * fwhm_lambda
+            center = wavelengths[idx]
+            lower = center - width
+            upper = center + width
+            exclude_regions.append((lower, upper))
 
-        color_map = {
-            'Fe': 'orange', 'Na': 'blue', 'Mg': 'green', 'Ti': 'purple', 'He': 'red'
-        }
-        used_elements = set()
+            mask &= (wavelengths < center - width) | (wavelengths > center + width)
+        self.exclude_regions = exclude_regions
+        return mask
+    
+    def build_line_mask_EW(self, matches):
+        # This function is not implemented in the original code.
+        # Placeholder for future implementation.
+        pass
 
-        if matches:
-            for match in matches:
-                color = color_map.get(match['element'], 'gray')
-                used_elements.add(match['element'])
-                plt.axvline(match['wavelength'], color=color, linestyle='--', alpha=0.6)
+    def plot_with_tellurics(self, matches=None, telluric=None, region=None, mask=None):
+            wl = self.data['wavelength']
+            flux = self.data['flux']
 
-        if region:
-            plt.xlim(region)
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+            ax1.plot(wl, flux, label='Original Spectrum')
 
-        plt.ylim(flux.min() - 0.1, flux.max() + 0.1)
-        plt.xlabel("Wavelength [μm]")
-        plt.ylabel("Flux")
+            if telluric:
+                trans = telluric['transmission']
+                ax1.plot(wl, trans, 'k--', label='Telluric Model')
 
-        # Add custom legend for matched lines
-        legend_elements = [Line2D([0], [0], color=color_map[el], lw=2, linestyle='--', label=el)
-                           for el in sorted(used_elements) if el in color_map]
-        plt.legend(handles=[Line2D([0], [0], color='black', lw=2, label='Spectrum')] +
-                           ([Line2D([0], [0], color='k', lw=2, linestyle='--', label='Telluric Model')] if telluric else []) +
-                           legend_elements)
+            color_map = {
+                'Fe': 'orange', 'Na': 'blue', 'Mg': 'green', 'Ti': 'purple', 'He': 'red'
+            }
+            used_elements = set()
 
-        plt.tight_layout()
-        plt.show()
+            if matches:
+                for match in matches:
+                    color = color_map.get(match['element'], 'gray')
+                    used_elements.add(match['element'])
+                    ax1.axvline(match['wavelength'], color=color, linestyle='--', alpha=0.6)
+
+            if hasattr(self, 'exclude_regions'):
+                for lower, upper in self.exclude_regions:
+                    ax1.axvspan(lower, upper, color='gray', alpha=0.7, label='Masked Region')
+                    ax2.axvspan(lower, upper, color='gray', alpha=0.7)
+
+            ax1.set_ylabel("Flux")
+            ax1.set_ylim(flux.min() - 0.1, flux.max() + 0.1)
+            ax1.set_title("Original Spectrum with Tellurics and Matched Lines")
+
+            if mask is not None:
+                ax2.plot(wl[mask], flux[mask], color='black', lw=1, label='Masked Spectrum')
+                ax2.set_ylabel("Flux (Masked)")
+                ax2.set_xlabel("Wavelength [μm]")
+                ax2.set_ylim(flux.min() - 0.1, flux.max() + 0.1)
+                ax2.set_title("Masked Spectrum (Lines Removed)")
+                ax2.plot(wl, trans, 'r--', label='Telluric Model')
+                ax2.legend()
+
+            if region:
+                ax1.set_xlim(region)
+                ax2.set_xlim(region)
+
+            legend_elements = [Line2D([0], [0], color=color_map[el], lw=2, linestyle='--', label=el)
+                            for el in sorted(used_elements) if el in color_map]
+            ax1.legend(handles=[Line2D([0], [0], color='black', lw=2, label='Spectrum')] +
+                            ([Line2D([0], [0], color='k', lw=2, linestyle='--', label='Telluric Model')] if telluric else []) +
+                            legend_elements +
+                            [Line2D([0], [0], color='gray', lw=4, alpha=0.3, label='Masked Region')])
+
+            plt.tight_layout()
+            plt.show()
 
 def load_spectrum(file_path):
     if file_path.endswith('.csv'):
@@ -104,28 +149,9 @@ def load_spectrum(file_path):
 def load_telluric_model(file_path):
     hdul = fits.open(file_path)
     # Find usable HDU
-    for i in [1, 0]:
-        data = hdul[i].data
-        if data is not None:
-            break
+    transmission = hdul[1].data
 
-    # Extract wavelength and transmission
-    if data.ndim == 1:
-        transmission = data
-        wavelength_tel = np.arange(len(data))
-    elif data.ndim == 2:
-        if data.shape[0] == 2:
-            wavelength_tel = data[0]
-            transmission = data[1]
-        elif data.shape[1] == 2:
-            wavelength_tel = data[:, 0]
-            transmission = data[:, 1]
-        else:
-            raise ValueError("Unexpected shape in telluric model.")
-    else:
-        raise ValueError("Unsupported telluric data shape.")
     return {
-        'wavelength': wavelength_tel, 
         'transmission': transmission
     }
 
@@ -150,18 +176,58 @@ def build_line_dict(df, elements=['Na', 'Mg', 'Fe', 'Ti'], min_intensity=0, top_
         line_dict[elem] = subset['obs_wl_vac(nm)'].values
     return line_dict
 
+def print_molecfit_rc_lines(include_regions=None, exclude_regions=None, precision=7):
+    """
+    Print wl_include and wl_exclude in Molecfit-compatible .rc syntax.
+
+    Parameters
+    ----------
+    include_regions : list of tuple
+        List of (lower, upper) wavelength pairs for inclusion.
+    exclude_regions : list of tuple
+        List of (lower, upper) wavelength pairs for exclusion.
+    precision : int
+        Number of decimal places to include.
+    """
+    fmt = f"{{:.{precision}f}}"
+
+    if include_regions:
+        include_flat = [val for pair in include_regions for val in pair]
+        include_str = ",".join(fmt.format(val) for val in include_flat)
+        print(f"WAVE_INCLUDE = {include_str}")
+
+    if exclude_regions:
+        exclude_flat = [val for pair in exclude_regions for val in pair]
+        exclude_str = ",".join(fmt.format(val) for val in exclude_flat)
+        print(f"WAVE_EXCLUDE = {exclude_str}")
+
 #%%
 #%%
 # Example usage (in another script or notebook):
-region1 = (0.652328, 0.652846)
-broadband = 0.649, 0.657
+region1 = (0.651, 0.652)
+order = (0.649, 0.657)
 spectrum = load_spectrum("KP202401202105978_molecfit_norm_normalized.fits")
 telluric = load_telluric_model("TELLURIC_CORR.fits")
 nist_df = clean_nist_csv("NIST_lines.csv")
 line_dict = build_line_dict(nist_df)
-matches = spectrum.match_known_lines(line_dict, region=broadband, tolerance=0.01, prominence=0.2)
-spectrum.plot_with_tellurics(matches=matches, telluric=telluric, region=broadband)
+order_matches = spectrum.match_known_lines(line_dict, region=order, tolerance=0.01, prominence=0.1)
+order_mask = spectrum.build_line_mask_FWHM(order_matches, buffer=1.1)
+spectrum.plot_with_tellurics(matches=order_matches, telluric=telluric, region=order, mask = order_mask)
+
 # The above code is a prototype for analyzing spectra and matching known lines.
 #%%
-matches
+region1 = (0.651, 0.652)
+region1_matches = spectrum.match_known_lines(line_dict, region=region1, tolerance=0.01, prominence=0.15)
+region1_mask = spectrum.build_line_mask_FWHM(region1_matches, buffer=1.2)
+spectrum.plot_with_tellurics(matches=region1_matches, telluric=telluric, region=region1, mask = region1_mask)
+
+# return molecfit rc bounds
+print_molecfit_rc_lines(include_regions=[region1], exclude_regions=spectrum.exclude_regions, precision=7)
+# %%
+region2 = (0.654, 0.65575)
+region2_matches = spectrum.match_known_lines(line_dict, region=region2, tolerance=0.01, prominence=0.15)
+region2_mask = spectrum.build_line_mask_FWHM(region2_matches, buffer=1.2)
+spectrum.plot_with_tellurics(matches=region2_matches, telluric=telluric, region=region2, mask = region2_mask)
+# %%
+print_molecfit_rc_lines(include_regions=[region2], exclude_regions=spectrum.exclude_regions, precision=7)
 # %%

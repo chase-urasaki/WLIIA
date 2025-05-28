@@ -10,6 +10,13 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from scipy.signal import peak_widths
 
+def load_espresso_lines(file_path):
+    """
+    Load a two-column ESPRESSO line list: wavelength (Å) and EW.
+    """
+    df = pd.read_csv(file_path, delim_whitespace=True, names=["wavelength", "ew"], comment="#")
+    return df
+
 class Spectrum:
     def __init__(self, data):
         self.data = data
@@ -47,6 +54,42 @@ class Spectrum:
                 matched.append(closest)
         return matched
     
+    def match_espresso_lines(self, line_df, tolerance=0.1, prominence=0.01, region=None):
+        """
+        Match observed spectrum lines to ESPRESSO-derived line list.
+
+        Parameters:
+            line_df : pandas DataFrame with 'wavelength' and 'ew' columns
+            tolerance : float — matching tolerance in Å
+            prominence : float — minimum line depth (used in peak finding)
+            region : tuple(float, float) — optional wavelength region (start, end)
+
+        Returns:
+            List of dicts with matched observed and known line data
+        """
+        wavelengths = self.data['wavelength']
+        flux = self.data['flux']
+        inverted_flux = 1 - flux
+        peaks, _ = find_peaks(inverted_flux, height=prominence)
+
+        matched = []
+        for idx in peaks:
+            wl_obs = wavelengths[idx]
+            if region and not (region[0] <= wl_obs <= region[1]):
+                continue
+
+            nearby_lines = line_df[np.abs(line_df['wavelength'] - wl_obs) <= tolerance]
+            if not nearby_lines.empty:
+                best_match = nearby_lines.iloc[nearby_lines['ew'].argmax()]
+                matched.append({
+                    'observed_wl': wl_obs,
+                    'catalog_wl': best_match['wavelength'],
+                    'catalog_ew': best_match['ew'],
+                    'index': idx
+                })
+
+        return matched
+
     def build_line_mask_FWHM(self, matches, buffer = 1.1):
         wavelengths = self.data['wavelength']
         flux = self.data['flux']
@@ -71,11 +114,68 @@ class Spectrum:
             mask &= (wavelengths < center - width) | (wavelengths > center + width)
         self.exclude_regions = exclude_regions
         return mask
-    
-    def build_line_mask_EW(self, matches):
-        # This function is not implemented in the original code.
-        # Placeholder for future implementation.
-        pass
+
+    def build_line_mask_EW(self, matches, buffer=1.5):
+        """
+        Build a mask to exclude spectral lines based on their equivalent width (EW).
+        
+        Parameters
+        ----------
+        matches : list of dict
+            List of dictionaries containing matches, each with 'index' key
+        buffer : float
+            Multiplier to make the masked region wider than the calculated EW
+            
+        Returns
+        -------
+        mask : ndarray
+            Boolean mask where True indicates wavelength points to keep
+        """
+        wavelengths = self.data['wavelength']
+        flux = self.data['flux']
+        mask = np.ones(len(wavelengths), dtype=bool)
+        exclude_regions = []
+
+        for match in matches:
+            idx = match['index']
+            
+            # Find the local line boundaries by walking outward from the line center
+            # until we reach close to the continuum level (using 98% of continuum)
+            i_left = idx
+            i_right = idx
+            # Define continuum level as 1.0 (for normalized spectra)
+            continuum = 1.0
+            threshold = 0.98  # Consider 98% of continuum to be the line boundary
+            
+            while i_left > 0 and flux[i_left] < threshold * continuum:
+                i_left -= 1
+                
+            while i_right < len(flux) - 1 and flux[i_right] < threshold * continuum:
+                i_right += 1
+            
+            # Calculate EW by integrating over the line
+            line_width_indices = i_right - i_left
+            if line_width_indices <= 0:
+                # Fallback if boundaries weren't found properly
+                width = 0.0005  # Default small width in μm
+            else:
+                # Calculate EW in wavelength units
+                wl_left = wavelengths[i_left]
+                wl_right = wavelengths[i_right]
+                width = (wl_right - wl_left) / 2  # Half-width
+            
+            # Apply buffer to width
+            buffered_width = buffer * width
+            center = wavelengths[idx]
+            lower = center - buffered_width
+            upper = center + buffered_width
+            exclude_regions.append((lower, upper))
+            
+            # Update mask
+            mask &= (wavelengths < lower) | (wavelengths > upper)
+        
+        self.exclude_regions = exclude_regions
+        return mask
 
     def plot_with_tellurics(self, matches=None, telluric=None, region=None, mask=None):
             wl = self.data['wavelength']
@@ -202,15 +302,43 @@ def print_molecfit_rc_lines(include_regions=None, exclude_regions=None, precisio
         print(f"WAVE_EXCLUDE = {exclude_str}")
 
 #%%
+# Run this the espresso line matching on the order
+# Load your spectrum from FITS or array
+#%%
+# Run ESPRESSO line matching on the entire order
+order = (0.649, 0.657)
+spectrum = load_spectrum("KP202401202105978_molecfit_norm_normalized.fits")
+telluric = load_telluric_model("TELLURIC_CORR.fits")
+
+# Load ESPRESSO line list
+espresso_lines = load_espresso_lines("K6_espresso.txt")  # Replace with your actual file
+
+# Match lines across the entire order
+order_espresso_matches = spectrum.match_espresso_lines(
+    espresso_lines, 
+    region=order,
+    tolerance=0.0005,  # Tighter tolerance for ESPRESSO lines (in μm)
+    prominence=0.1
+)
+
+# Create a mask based on the matched lines
+order_mask = spectrum.build_line_mask_EW(order_espresso_matches, buffer=1.2)
+
+# Modify plot_with_tellurics function call to handle ESPRESSO matches
+spectrum.plot_with_tellurics(matches=order_espresso_matches, telluric=telluric, region=order, mask=order_mask)
+
+# Get Molecfit RC lines for the entire order
+print_molecfit_rc_lines(include_regions=[order], exclude_regions=spectrum.exclude_regions, precision=7)
 #%%
 # Example usage (in another script or notebook):
 region1 = (0.651, 0.652)
 order = (0.649, 0.657)
 spectrum = load_spectrum("KP202401202105978_molecfit_norm_normalized.fits")
 telluric = load_telluric_model("TELLURIC_CORR.fits")
-nist_df = clean_nist_csv("NIST_lines.csv")
-line_dict = build_line_dict(nist_df)
-order_matches = spectrum.match_known_lines(line_dict, region=order, tolerance=0.01, prominence=0.1)
+#nist_df = clean_nist_csv("NIST_lines.csv")
+#ine_dict = build_line_dict(nist_df)
+
+#order_matches = spectrum.match_known_lines(line_dict, region=order, tolerance=0.01, prominence=0.1)
 order_mask = spectrum.build_line_mask_FWHM(order_matches, buffer=1.1)
 spectrum.plot_with_tellurics(matches=order_matches, telluric=telluric, region=order, mask = order_mask)
 

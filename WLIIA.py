@@ -305,57 +305,57 @@ def print_molecfit_rc_lines(include_regions=None, exclude_regions=None, precisio
 # Run this the espresso line matching on the order
 # Load your spectrum from FITS or array
 #%%
-# Run ESPRESSO line matching on the entire order
-order = (0.649, 0.657)
-spectrum = load_spectrum("KP202401202105978_molecfit_norm_normalized.fits")
-telluric = load_telluric_model("TELLURIC_CORR.fits")
+# # Run ESPRESSO line matching on the entire order
+# order = (0.649, 0.657)
+# spectrum = load_spectrum("KP202401202105978_molecfit_norm_normalized.fits")
+# telluric = load_telluric_model("TELLURIC_CORR.fits")
 
-# Load ESPRESSO line list
-espresso_lines = load_espresso_lines("K6_espresso.txt")  # Replace with your actual file
+# # Load ESPRESSO line list
+# espresso_lines = load_espresso_lines("K6_espresso.txt")  # Replace with your actual file
 
-# Match lines across the entire order
-order_espresso_matches = spectrum.match_espresso_lines(
-    espresso_lines, 
-    region=order,
-    tolerance=0.0005,  # Tighter tolerance for ESPRESSO lines (in μm)
-    prominence=0.1
-)
+# # Match lines across the entire order
+# order_espresso_matches = spectrum.match_espresso_lines(
+#     espresso_lines, 
+#     region=order,
+#     tolerance=0.0005,  # Tighter tolerance for ESPRESSO lines (in μm)
+#     prominence=0.1
+# )
 
-# Create a mask based on the matched lines
-order_mask = spectrum.build_line_mask_EW(order_espresso_matches, buffer=1.2)
+# # Create a mask based on the matched lines
+# order_mask = spectrum.build_line_mask_EW(order_espresso_matches, buffer=1.2)
 
-# Modify plot_with_tellurics function call to handle ESPRESSO matches
-spectrum.plot_with_tellurics(matches=order_espresso_matches, telluric=telluric, region=order, mask=order_mask)
+# # Modify plot_with_tellurics function call to handle ESPRESSO matches
+# spectrum.plot_with_tellurics(matches=order_espresso_matches, telluric=telluric, region=order, mask=order_mask)
 
-# Get Molecfit RC lines for the entire order
-print_molecfit_rc_lines(include_regions=[order], exclude_regions=spectrum.exclude_regions, precision=7)
-#%%
-# Example usage (in another script or notebook):
-region1 = (0.651, 0.652)
-order = (0.649, 0.657)
-spectrum = load_spectrum("KP202401202105978_molecfit_norm_normalized.fits")
-telluric = load_telluric_model("TELLURIC_CORR.fits")
-#nist_df = clean_nist_csv("NIST_lines.csv")
-#ine_dict = build_line_dict(nist_df)
+# # Get Molecfit RC lines for the entire order
+# print_molecfit_rc_lines(include_regions=[order], exclude_regions=spectrum.exclude_regions, precision=7)
+# #%%
+# # Example usage (in another script or notebook):
+# region1 = (0.651, 0.652)
+# order = (0.649, 0.657)
+# spectrum = load_spectrum("KP202401202105978_molecfit_norm_normalized.fits")
+# telluric = load_telluric_model("TELLURIC_CORR.fits")
+# #nist_df = clean_nist_csv("NIST_lines.csv")
+# #ine_dict = build_line_dict(nist_df)
 
-#order_matches = spectrum.match_known_lines(line_dict, region=order, tolerance=0.01, prominence=0.1)
-order_mask = spectrum.build_line_mask_FWHM(order_matches, buffer=1.1)
-spectrum.plot_with_tellurics(matches=order_matches, telluric=telluric, region=order, mask = order_mask)
+# #order_matches = spectrum.match_known_lines(line_dict, region=order, tolerance=0.01, prominence=0.1)
+# order_mask = spectrum.build_line_mask_FWHM(order_matches, buffer=1.1)
+# spectrum.plot_with_tellurics(matches=order_matches, telluric=telluric, region=order, mask = order_mask)
 
-# The above code is a prototype for analyzing spectra and matching known lines.
-#%%
-region1 = (0.651, 0.652)
-region1_matches = spectrum.match_known_lines(line_dict, region=region1, tolerance=0.01, prominence=0.15)
-region1_mask = spectrum.build_line_mask_FWHM(region1_matches, buffer=1.2)
-spectrum.plot_with_tellurics(matches=region1_matches, telluric=telluric, region=region1, mask = region1_mask)
+# # The above code is a prototype for analyzing spectra and matching known lines.
+# #%%
+# region1 = (0.651, 0.652)
+# region1_matches = spectrum.match_known_lines(line_dict, region=region1, tolerance=0.01, prominence=0.15)
+# region1_mask = spectrum.build_line_mask_FWHM(region1_matches, buffer=1.2)
+# spectrum.plot_with_tellurics(matches=region1_matches, telluric=telluric, region=region1, mask = region1_mask)
 
-# return molecfit rc bounds
-print_molecfit_rc_lines(include_regions=[region1], exclude_regions=spectrum.exclude_regions, precision=7)
-# %%
-region2 = (0.654, 0.65575)
-region2_matches = spectrum.match_known_lines(line_dict, region=region2, tolerance=0.01, prominence=0.15)
-region2_mask = spectrum.build_line_mask_FWHM(region2_matches, buffer=1.2)
-spectrum.plot_with_tellurics(matches=region2_matches, telluric=telluric, region=region2, mask = region2_mask)
-# %%
-print_molecfit_rc_lines(include_regions=[region2], exclude_regions=spectrum.exclude_regions, precision=7)
-# %%
+# # return molecfit rc bounds
+# print_molecfit_rc_lines(include_regions=[region1], exclude_regions=spectrum.exclude_regions, precision=7)
+# # %%
+# region2 = (0.654, 0.65575)
+# region2_matches = spectrum.match_known_lines(line_dict, region=region2, tolerance=0.01, prominence=0.15)
+# region2_mask = spectrum.build_line_mask_FWHM(region2_matches, buffer=1.2)
+# spectrum.plot_with_tellurics(matches=region2_matches, telluric=telluric, region=region2, mask = region2_mask)
+# # %%
+# print_molecfit_rc_lines(include_regions=[region2], exclude_regions=spectrum.exclude_regions, precision=7)
+# # %%

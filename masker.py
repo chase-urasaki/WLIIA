@@ -4,9 +4,29 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy.signal import peak_widths
+from astropy.io import fits
 #%% 
 
-He_spec = pd.read_csv("wav_cal_optimal_red_nspec200714_0226_70.spectrum", delim_whitespace=True)
+#file_name = "KP202401202105978_molecfit_norm_normalized.fits"
+
+file_name = "wav_cal_optimal_red_nspec200714_0226_70.spectrum"
+
+def read_spectrum(file_name):
+    if file_name.endswith('.spectrum'):
+        df = pd.read_csv(file_name, delim_whitespace=True)
+        return df
+    
+    if file_name.endswith('.fits'): 
+        with fits.open(file_name) as hdul:
+            data = hdul[1].data
+            df = pd.DataFrame(data)
+            return df
+
+    else:
+        raise ValueError("Unsupported file format. Please provide a .spectrum file.")
+    
+He_spec = read_spectrum(file_name)
+#%%
 
 # %%
 # remove 0 valued spectrum points 
@@ -29,6 +49,16 @@ def clean_nist_csv(file):
     df = df.dropna(subset=['obs_wl_vac(nm)'])
     return df
 
+def build_line_dict_ESPRESSO(df, spectral_type, min_intensity=0, top_n=None):
+        # read in correct text file according to type 
+            # two columns: wavelength and EW
+            # convert WL from Angstroms to microns 
+        # convert to df 
+        # create dictionary "entry" for the spectral type 
+        # fill in entry with wavelengths and EW's in text
+        return line_dict_ESPRESSO
+
+
 def build_line_dict(df, elements=['Na', 'Mg', 'Fe', 'Ti'], min_intensity=0, top_n=None):
     line_dict = {}
     for elem in elements:
@@ -40,12 +70,14 @@ def build_line_dict(df, elements=['Na', 'Mg', 'Fe', 'Ti'], min_intensity=0, top_
 
         line_dict[elem] = subset['obs_wl_vac(nm)'].values
     return line_dict
+
 # %%
-nist_df = clean_nist_csv('NIST_lines.csv')
+nist_df = clean_nist_csv('./data/NIST_lines.csv')
 
 line_dict = build_line_dict(nist_df)
+#%%
+print(line_dict)
 # %%
-line_dict
 # %%
 def match_known_lines(wavelengths, flux, line_dict, tolerance=0.01, prominence=0.2, region=None):
     inverted = 1 - flux
@@ -200,7 +232,7 @@ def build_line_mask_FWHM(wavelengths, flux, matches, buffer=1.2):
             
     # self.exclude_regions = exclude_regions
     return mask, exclude_regions
-# %%
+# %%3
 mask, exclude_regions = build_line_mask_FWHM(He_spec_clean['Wavelength'].values, He_spec_clean['Spectrum'].values, matched_lines, buffer=1.1)
 # %%
 plt.figure(figsize=(12, 6))

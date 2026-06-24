@@ -288,7 +288,7 @@ st.subheader("Line catalog & matching")
 st.session_state.line_source = st.radio("Catalog source", ["NIST","ESPRESSO","UPLOAD"], index=(0 if st.session_state.line_source=="NIST" else 1), horizontal=True)
 
 if st.session_state.line_source == "NIST":
-    NIST_PATH = Path(__file__).parent / "NIST_lines.csv"
+    NIST_PATH = Path(__file__).parent / "./data/NIST_lines.csv"
 
     @st.cache_data
     def load_nist_default():

@@ -1,8 +1,0 @@
-LICENSE
-README.md
-pyproject.toml
-WLIIA.egg-info/PKG-INFO
-WLIIA.egg-info/SOURCES.txt
-WLIIA.egg-info/dependency_links.txt
-WLIIA.egg-info/requires.txt
-WLIIA.egg-info/top_level.txt

@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project] 
+name = "WLIIA" 
+version = "0.0.1" 
+
+dependencies = [
+    "numpy", 
+    "pandas", 
+    "scipy", 
+    "astropy"
+]

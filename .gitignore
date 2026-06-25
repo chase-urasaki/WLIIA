@@ -1,0 +1,4 @@
+./docs
+./__pychache__ 
+.vscode
+*.egg-info 

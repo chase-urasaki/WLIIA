@@ -144,6 +144,78 @@ def match_known_lines(wavelengths, flux, line_dict, tolerance=0.01, prominence=0
             matched.append(closest)
     return matched
 
+def build_line_mask_FWHM(wavelengths, flux, matches, buffer=1.2) -> tuple[list, list]:
+    """
+    Build a mask to exclude spectral lines based on their FWHM.
+    
+    Parameters
+    ----------
+    matches : pandas DataFrame or list of dict
+        DataFrame containing matches with an 'index' column, or list of dictionaries
+    buffer : float
+        Multiplier to make the masked region wider than the FWHM
+        
+    Returns
+    -------
+    mask : ndarray
+        Boolean mask where True indicates wavelength points to keep
+    """
+    mask = np.ones(len(wavelengths), dtype=bool)
+    exclude_regions = []
+
+    # Handle matches as either DataFrame or list of dicts
+    if isinstance(matches, pd.DataFrame):
+        # Process DataFrame rows
+        for _, row in matches.iterrows():
+            if 'index' in row:
+                idx = row['index']
+            else:
+                # If no index is provided but wavelength is, find nearest index
+                if 'wavelength' in row:
+                    wl = row['wavelength']
+                elif 'observed_wl' in row:
+                    wl = row['observed_wl']
+                else:
+                    continue  # Skip if no wavelength information
+                
+                idx = np.argmin(np.abs(wavelengths - wl))
+            
+            # Estimate FWHM using the peak width in index space
+            region_flux = 1 - flux
+            results_half = peak_widths(region_flux, [idx], rel_height=0.5)
+            fwhm_pixels = results_half[0][0]
+
+            dlambda = np.gradient(wavelengths)
+            fwhm_lambda = fwhm_pixels * dlambda[idx]
+            width = buffer * fwhm_lambda
+            center = wavelengths[idx]
+            lower = center - width
+            upper = center + width
+            exclude_regions.append((lower, upper))
+
+            mask &= (wavelengths < center - width) | (wavelengths > center + width)
+    else:
+        # Process list of dictionaries (original implementation)
+        for match in matches:
+            idx = match['index']
+            # Estimate FWHM using the peak width in index space
+            region_flux = 1 - flux
+            results_half = peak_widths(region_flux, [idx], rel_height=0.5)
+            fwhm_pixels = results_half[0][0]
+
+            dlambda = np.gradient(wavelengths)
+            fwhm_lambda = fwhm_pixels * dlambda[idx]
+            width = buffer * fwhm_lambda
+            center = wavelengths[idx]
+            lower = center - width
+            upper = center + width
+            exclude_regions.append((lower, upper))
+
+            mask &= (wavelengths < center - width) | (wavelengths > center + width)
+            
+    # self.exclude_regions = exclude_regions
+    return mask, exclude_regions
+
 # def load_espresso_lines(file_path):
 #     """
 #     Load a two-column ESPRESSO line list: wavelength (Å) and EW.

@@ -1,4 +1,4 @@
-./docs
+./docs/_build
 ./__pychache__ 
 .vscode
 *.egg-info 
